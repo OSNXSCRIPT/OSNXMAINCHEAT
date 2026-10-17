@@ -203,7 +203,11 @@ local function RF_fire()
     local tool = RF_getTool(); if not tool or tool.Parent ~= LP.Character then return end
     local origin = Camera.CFrame.Position
     local aimPos
-    if RF.AutoAim or RF.SuperLock then
+    if SA.Enabled and SA._cache then
+        aimPos = SA._cache.Position
+        local vel; pcall(function() vel = SA._cache.Velocity end)
+        if vel then aimPos = aimPos + vel * RF.PredictionAmount end
+    elseif RF.AutoAim or RF.SuperLock then
         local t = RF_getClosestTarget(RF.SuperLock and RF.SuperLockFOV or RF.FOVRadius)
         if t then
             aimPos = t.Position
@@ -909,7 +913,7 @@ MainFrame.Position=UDim2.new(0.5,-MainW/2,0.5,-MainH/2); MainFrame.Size=UDim2.ne
 MainFrame.BackgroundColor3=P.bg; MainFrame.BorderSizePixel=0; MainFrame.ClipsDescendants=true
 Instance.new("UICorner",MainFrame).CornerRadius=UDim.new(0,10)
 local MainStroke=Instance.new("UIStroke",MainFrame); MainStroke.Color=P.border; MainStroke.Thickness=1
-local ScaleUI=Instance.new("UIScale",MainFrame); ScaleUI.Scale=1.0
+local ScaleUI=Instance.new("UIScale",MainFrame); ScaleUI.Scale=EXEC_IsPC and 1.0 or 0.60
 
 local TopBar=Instance.new("Frame",MainFrame); TopBar.Size=UDim2.new(1,0,0,40); TopBar.BackgroundColor3=P.sidebar; TopBar.BorderSizePixel=0; TopBar.ZIndex=5
 local TBLine=Instance.new("Frame",TopBar); TBLine.Position=UDim2.new(0,0,1,-1); TBLine.Size=UDim2.new(1,0,0,1); TBLine.BackgroundColor3=P.border; TBLine.BorderSizePixel=0; TBLine.ZIndex=6
