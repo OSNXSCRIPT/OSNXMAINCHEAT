@@ -909,7 +909,8 @@ local ScaleMap={Small=0.85,Medium=1.0,Large=1.18}
 local MainW,MainH=760,520
 
 MainFrame=Instance.new("Frame"); MainFrame.Name="MainFrame"; MainFrame.Parent=ScreenGui
-MainFrame.Position=UDim2.new(0.5,-MainW/2,0.5,-MainH/2); MainFrame.Size=UDim2.new(0,MainW,0,MainH)
+MainFrame.AnchorPoint=Vector2.new(0.5,0.5)
+MainFrame.Position=UDim2.new(0.5,0,0.5,0); MainFrame.Size=UDim2.new(0,MainW,0,MainH)
 MainFrame.BackgroundColor3=P.bg; MainFrame.BorderSizePixel=0; MainFrame.ClipsDescendants=true
 Instance.new("UICorner",MainFrame).CornerRadius=UDim.new(0,10)
 local MainStroke=Instance.new("UIStroke",MainFrame); MainStroke.Color=P.border; MainStroke.Thickness=1
@@ -1498,10 +1499,10 @@ UserInputService.InputBegan:Connect(function(input, processed)
         forceCursorVisible()
         if not MainFrame.Visible then
             MainFrame.Visible=true
-            MainFrame.Position=UDim2.new(0.5,-MainW/2,0.5,-MainH/2-20)
-            TweenService:Create(MainFrame,TweenInfo.new(0.22,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.new(0.5,-MainW/2,0.5,-MainH/2)}):Play()
+            MainFrame.Position=UDim2.new(0.5,0,0.5,-20)
+            TweenService:Create(MainFrame,TweenInfo.new(0.22,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.new(0.5,0,0.5,0)}):Play()
         else
-            TweenService:Create(MainFrame,TweenInfo.new(0.16,Enum.EasingStyle.Quart,Enum.EasingDirection.In),{Position=UDim2.new(0.5,-MainW/2,0.5,-MainH/2+20)}):Play()
+            TweenService:Create(MainFrame,TweenInfo.new(0.16,Enum.EasingStyle.Quart,Enum.EasingDirection.In),{Position=UDim2.new(0.5,0,0.5,20)}):Play()
             task.delay(0.16,function() MainFrame.Visible=false end)
         end
     elseif input.KeyCode==_PanicKey then
@@ -1515,16 +1516,16 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
 end)
 
-closeBtn.MouseButton1Click:Connect(function() forceCursorVisible(); TweenService:Create(MainFrame,TweenInfo.new(0.16,Enum.EasingStyle.Quart,Enum.EasingDirection.In),{Position=UDim2.new(0.5,-MainW/2,0.5,-MainH/2+20)}):Play(); task.delay(0.16,function() MainFrame.Visible=false end) end)
-minBtn.MouseButton1Click:Connect(function() forceCursorVisible(); TweenService:Create(MainFrame,TweenInfo.new(0.16,Enum.EasingStyle.Quart,Enum.EasingDirection.In),{Position=UDim2.new(0.5,-MainW/2,0.5,-MainH/2+20)}):Play(); task.delay(0.16,function() MainFrame.Visible=false end) end)
+closeBtn.MouseButton1Click:Connect(function() forceCursorVisible(); TweenService:Create(MainFrame,TweenInfo.new(0.16,Enum.EasingStyle.Quart,Enum.EasingDirection.In),{Position=UDim2.new(0.5,0,0.5,20)}):Play(); task.delay(0.16,function() MainFrame.Visible=false end) end)
+minBtn.MouseButton1Click:Connect(function() forceCursorVisible(); TweenService:Create(MainFrame,TweenInfo.new(0.16,Enum.EasingStyle.Quart,Enum.EasingDirection.In),{Position=UDim2.new(0.5,0,0.5,20)}):Play(); task.delay(0.16,function() MainFrame.Visible=false end) end)
 
 local dragging,dragInput,dragStart,startPos=false,nil,nil,nil
 TopBar.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=true; dragStart=i.Position; startPos=MainFrame.Position; i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then dragging=false end end) end end)
 TopBar.InputChanged:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch then dragInput=i end end)
 UserInputService.InputChanged:Connect(function(i) if i==dragInput and dragging then local d=i.Position-dragStart; MainFrame.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y) end end)
 
-MainFrame.Position=UDim2.new(0.5,-MainW/2,0.5,-MainH/2-24)
-TweenService:Create(MainFrame,TweenInfo.new(0.28,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.new(0.5,-MainW/2,0.5,-MainH/2)}):Play()
+MainFrame.Position=UDim2.new(0.5,0,0.5,-24)
+TweenService:Create(MainFrame,TweenInfo.new(0.28,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.new(0.5,0,0.5,0)}):Play()
 
 local CircleBtn=Instance.new("ImageButton"); CircleBtn.Name="OSNXToggle"; CircleBtn.Size=UDim2.new(0,56,0,56); CircleBtn.Position=UDim2.new(0,14,0.5,-28); CircleBtn.BackgroundTransparency=1; CircleBtn.Image=IMAGE_ID; CircleBtn.ZIndex=10; CircleBtn.Parent=ScreenGui
 Instance.new("UICorner",CircleBtn).CornerRadius=UDim.new(1,0)
@@ -1537,8 +1538,8 @@ CircleBtn.InputEnded:Connect(function(inp)
         _cDragging=false
         if not _cMoved then
             forceCursorVisible()
-            if not MainFrame.Visible then MainFrame.Visible=true; MainFrame.Position=UDim2.new(0.5,-MainW/2,0.5,-MainH/2-20); TweenService:Create(MainFrame,TweenInfo.new(0.22,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.new(0.5,-MainW/2,0.5,-MainH/2)}):Play()
-            else TweenService:Create(MainFrame,TweenInfo.new(0.16,Enum.EasingStyle.Quart,Enum.EasingDirection.In),{Position=UDim2.new(0.5,-MainW/2,0.5,-MainH/2+20)}):Play(); wait(0.17); MainFrame.Visible=false end
+            if not MainFrame.Visible then MainFrame.Visible=true; MainFrame.Position=UDim2.new(0.5,0,0.5,-20); TweenService:Create(MainFrame,TweenInfo.new(0.22,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.new(0.5,0,0.5,0)}):Play()
+            else TweenService:Create(MainFrame,TweenInfo.new(0.16,Enum.EasingStyle.Quart,Enum.EasingDirection.In),{Position=UDim2.new(0.5,0,0.5,20)}):Play(); wait(0.17); MainFrame.Visible=false end
         end
     end
 end)
