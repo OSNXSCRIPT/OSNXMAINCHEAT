@@ -590,43 +590,10 @@ RunService.RenderStepped:Connect(function()
     SA._cache=(SA.Enabled and not SA_ShouldSkip()) and SA_GetNearest() or nil
 end)
 
--- hookmetamethod: attempt silently; if unavailable (Delta/etc.) SA raycast redirect is skipped
--- The SA._cache and FOV circle still work — only the raycast redirect is gated
-local _saHookActive = false
-pcall(function()
-    local namecallHook
-    namecallHook = hookmetamethod(game, "__namecall", function(self, ...)
-        if SA.Enabled and SA._cache then
-            local method = getnamecallmethod()
-            if method == "Raycast" then
-                local args = {...}; local origin, direction, params = args[1], args[2], args[3]
-                if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
-                    if SA_IsBulletRay(origin, direction, params) then
-                        local toTarget = SA._cache.Position - origin
-                        local newMag = math.max(direction.Magnitude, toTarget.Magnitude + 5)
-                        args[2] = toTarget.Unit * newMag
-                        return namecallHook(self, table.unpack(args))
-                    end
-                end
-            elseif method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRay" then
-                local args = {...}; local originalRay = args[1]
-                if typeof(originalRay) == "Ray" then
-                    if SA_IsBulletRay(originalRay.Origin, originalRay.Direction, nil) then
-                        local toTarget = SA._cache.Position - originalRay.Origin
-                        local newMag = math.max(originalRay.Direction.Magnitude, toTarget.Magnitude + 5)
-                        args[1] = Ray.new(originalRay.Origin, toTarget.Unit * newMag)
-                        return namecallHook(self, table.unpack(args))
-                    end
-                end
-            end
-        end
-        return namecallHook(self, ...)
-    end)
-    _saHookActive = true
-end)
-if not _saHookActive then
-    warn("[#OSNX] hookmetamethod unavailable — Silent Aim raycast redirect disabled on this executor")
-end
+
+-- SA raycast redirect removed: hookmetamethod triggers Adonis kick on call detection.
+-- SA FOV circle and _cache targeting still active. Redirect handled by RF FireServer CFrame.
+
 
 -- ═══════════ COMBAT HELPERS ═══════════
 local function isTeammate(player)
