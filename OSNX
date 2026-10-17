@@ -1,417 +1,21 @@
 -- ═══════════════════════════════════════════════════════════
---   #OSNX MAIN CHEAT — MERGED BUILD v3
+--   #OSNX MAIN CHEAT — NO KEY BUILD
 --   Kenji Engine RF (PC + Mobile) + Full UI + Silent Aim2
 --   Privacy: overhead name replicates to server
 --   Made by XIAN a.k.a XSHOMAPAGMAHAL
+--   Key system removed — Delta executor compatible
 -- ═══════════════════════════════════════════════════════════
 
-local IMAGE_ID = "rbxthumb://type=Asset&id=83151580707854&w=420&h=420"
-local PROJ     = "osnx-keys"
-local APIKEY   = "AIzaSyCiUxA_5wbCT9VzmiUQnmuzL1pl4jhppBc"
-local BASE     = "https://firestore.googleapis.com/v1/projects/"..PROJ.."/databases/(default)/documents/keys/"
-local HS       = game:GetService("HttpService")
-local CG       = game:GetService("CoreGui")
-
+local IMAGE_ID    = "rbxthumb://type=Asset&id=83151580707854&w=420&h=420"
 local DISCORD_URL = "https://discord.gg/FdZkjnBJGm"
 local WEBSITE_URL = "https://discord.gg/FdZkjnBJGm"
-
-local function GET(url)
-    local r
-    if not pcall(function() r = game:HttpGet(url, true) end) then
-        pcall(function() r = HS:GetAsync(url, true) end)
-    end
-    return r
-end
-
-local function CHECK(key)
-    local raw = GET(BASE .. key .. "?key=" .. APIKEY)
-    if not raw then return false, "Network error", 0 end
-    local ok, d = pcall(HS.JSONDecode, HS, raw)
-    if not ok or not d or not d.fields then return false, "Invalid key", 0 end
-    local f = d.fields
-    if not (f.enabled and f.enabled.booleanValue) then return false, "Key disabled", 0 end
-    local uses = tonumber(f.uses    and f.uses.integerValue)    or 0
-    local mx   = tonumber(f.maxUses and f.maxUses.integerValue) or 0
-    if mx > 0 and uses >= mx then return false, "Max uses reached", uses end
-    return true, nil, uses
-end
-
-local function httpPost(url, body)
-    local req = {
-        Url = url, Method = "PATCH",
-        Headers = {["Content-Type"] = "application/json"},
-        Body = body
-    }
-    if syn and syn.request then pcall(syn.request, req); return end
-    if http_request then pcall(http_request, req); return end
-    if request then pcall(request, req); return end
-    if fluxus and fluxus.request then pcall(fluxus.request, req); return end
-    pcall(function()
-        req.Method = "PATCH"
-        HS:RequestAsync(req)
-    end)
-end
+local CG          = game:GetService("CoreGui")
 
 local function openDiscord()
     pcall(function() game:GetService("GuiService"):OpenBrowserWindow("discord://-/invite/FdZkjnBJGm") end)
     task.wait(0.4)
     pcall(function() game:GetService("GuiService"):OpenBrowserWindow(DISCORD_URL) end)
 end
-
--- ── Key save/load helpers ──
-local OSNX_KEY_FILE = "osnx_key.txt"
-local function saveKey(k) pcall(function() writefile(OSNX_KEY_FILE, k) end) end
-local function loadSavedKey()
-    local ok, data = pcall(function() return readfile(OSNX_KEY_FILE) end)
-    if ok and data and #data > 4 then return data:upper():gsub("%s","") end
-    return nil
-end
-local function clearSavedKey() pcall(function() delfile(OSNX_KEY_FILE) end) end
-
--- ── Session tracking: increment on verify, decrement on leave/panic, ping lastSeen every 30s ──
-local _sessionActive = false
-local _verifiedKey   = nil
-local _verifiedUses  = 0
-local _pingLoop      = nil
-
-local function _patchFields(k, fields)
-    local body = HS:JSONEncode({ fields = fields })
-    local mask = {}
-    for fk in pairs(fields) do table.insert(mask, "updateMask.fieldPaths="..fk) end
-    local url = BASE .. k .. "?" .. table.concat(mask, "&") .. "&key=" .. APIKEY
-    httpPost(url, body)
-end
-
--- Set uses = 1, lastSeen = now (epoch seconds as string)
-local function sessionStart(k)
-    if _sessionActive then return end
-    _sessionActive = true
-    _patchFields(k, {
-        uses     = { integerValue = "1" },
-        lastSeen = { integerValue = tostring(math.floor(tick())) }
-    })
-    -- Heartbeat: update lastSeen every 30s so website knows we're alive
-    _pingLoop = task.spawn(function()
-        while _sessionActive do
-            task.wait(30)
-            if not _sessionActive then break end
-            pcall(function()
-                _patchFields(k, {
-                    lastSeen = { integerValue = tostring(math.floor(tick())) }
-                })
-            end)
-        end
-    end)
-end
-
--- Set uses = 0, lastSeen = 0 (offline)
-local function sessionEnd(k)
-    if not _sessionActive then return end
-    _sessionActive = false
-    pcall(function()
-        _patchFields(k, {
-            uses     = { integerValue = "0" },
-            lastSeen = { integerValue = "0" }
-        })
-    end)
-end
-
-local function doSessionStart()
-    if not _verifiedKey then return end
-    task.spawn(function() sessionStart(_verifiedKey) end)
-end
-
-local function doSessionEnd()
-    if not _verifiedKey then return end
-    sessionEnd(_verifiedKey)
-end
-
-pcall(function()
-    if CG:FindFirstChild("__OSNXGate") then CG:FindFirstChild("__OSNXGate"):Destroy() end
-end)
-
-local _savedKey = loadSavedKey()
-local done = false
-
-if _savedKey then
-    -- Auto-save is on: check if key is valid, pre-fill gate, let user confirm (or auto-login if toggle enabled)
-    local _ok, _, _u = CHECK(_savedKey)
-    if not _ok then
-        _savedKey = nil
-        clearSavedKey()
-    else
-        _verifiedKey = _savedKey
-        _verifiedUses = _u or 0
-    end
-end
-
--- ── Gate UI ──
-local Root = Instance.new("ScreenGui")
-Root.Name = "__OSNXGate"; Root.ResetOnSpawn = false
-Root.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; Root.Parent = CG
-
-local Dim = Instance.new("Frame", Root)
-Dim.Size = UDim2.new(1,0,1,0); Dim.BackgroundColor3 = Color3.new(0,0,0)
-Dim.BackgroundTransparency = 0.4; Dim.BorderSizePixel = 0; Dim.ZIndex = 1
-
-local Card = Instance.new("Frame", Root)
-Card.Size = UDim2.new(0,430,0,320); Card.Position = UDim2.new(0.5,-215,0.5,-160)
-Card.BackgroundColor3 = Color3.fromRGB(11,11,13); Card.BorderSizePixel = 0; Card.ZIndex = 2
-Instance.new("UICorner", Card).CornerRadius = UDim.new(0,12)
-local _cs = Instance.new("UIStroke", Card); _cs.Color = Color3.fromRGB(36,38,43); _cs.Thickness = 1
-
--- Box logo (no UICorner = square)
-local LogoImg = Instance.new("ImageLabel", Card)
-LogoImg.Size = UDim2.new(0,36,0,36); LogoImg.Position = UDim2.new(0,16,0,16)
-LogoImg.BackgroundColor3 = Color3.fromRGB(20,21,25); LogoImg.BorderSizePixel = 0
-LogoImg.Image = IMAGE_ID; LogoImg.ZIndex = 3
--- no UICorner — box shape
-
-local Title = Instance.new("TextLabel", Card)
-Title.Text = "#OSNX"; Title.TextColor3 = Color3.fromRGB(229,229,229)
-Title.Font = Enum.Font.GothamBold; Title.TextSize = 18
-Title.Size = UDim2.new(0,200,0,22); Title.Position = UDim2.new(0,60,0,14)
-Title.BackgroundTransparency = 1; Title.TextXAlignment = Enum.TextXAlignment.Left; Title.ZIndex = 3
-
-local Sub = Instance.new("TextLabel", Card)
-Sub.Text = "by xshomapagmahal"; Sub.TextColor3 = Color3.fromRGB(85,89,96)
-Sub.Font = Enum.Font.Gotham; Sub.TextSize = 11
-Sub.Size = UDim2.new(0,200,0,15); Sub.Position = UDim2.new(0,60,0,36)
-Sub.BackgroundTransparency = 1; Sub.TextXAlignment = Enum.TextXAlignment.Left; Sub.ZIndex = 3
-
-local Badge = Instance.new("Frame", Card)
-Badge.Size = UDim2.new(0,110,0,22); Badge.Position = UDim2.new(1,-126,0,18)
-Badge.BackgroundColor3 = Color3.fromRGB(24,26,30); Badge.BorderSizePixel = 0; Badge.ZIndex = 3
-Instance.new("UICorner", Badge).CornerRadius = UDim.new(0,6)
-local _bs = Instance.new("UIStroke", Badge); _bs.Color = Color3.fromRGB(50,52,60); _bs.Thickness = 1
-local BDot = Instance.new("Frame", Badge)
-BDot.Size = UDim2.new(0,6,0,6); BDot.Position = UDim2.new(0,8,0.5,-3)
-BDot.BackgroundColor3 = Color3.fromRGB(142,146,153); BDot.BorderSizePixel = 0; BDot.ZIndex = 4
-Instance.new("UICorner", BDot).CornerRadius = UDim.new(1,0)
-local BLabel = Instance.new("TextLabel", Badge)
-BLabel.Text = "KEY REQUIRED"; BLabel.TextColor3 = Color3.fromRGB(142,146,153)
-BLabel.Font = Enum.Font.GothamBold; BLabel.TextSize = 9
-BLabel.Size = UDim2.new(1,-20,1,0); BLabel.Position = UDim2.new(0,20,0,0)
-BLabel.BackgroundTransparency = 1; BLabel.TextXAlignment = Enum.TextXAlignment.Left; BLabel.ZIndex = 4
-
-local Div = Instance.new("Frame", Card)
-Div.Size = UDim2.new(1,-32,0,1); Div.Position = UDim2.new(0,16,0,64)
-Div.BackgroundColor3 = Color3.fromRGB(24,26,30); Div.BorderSizePixel = 0; Div.ZIndex = 3
-
-local KLabel = Instance.new("TextLabel", Card)
-KLabel.Text = "Enter your license key"; KLabel.TextColor3 = Color3.fromRGB(229,229,229)
-KLabel.Font = Enum.Font.GothamBold; KLabel.TextSize = 14
-KLabel.Size = UDim2.new(1,-32,0,18); KLabel.Position = UDim2.new(0,16,0,76)
-KLabel.BackgroundTransparency = 1; KLabel.TextXAlignment = Enum.TextXAlignment.Left; KLabel.ZIndex = 3
-
-local BoxBG = Instance.new("Frame", Card)
-BoxBG.Size = UDim2.new(1,-136,0,38); BoxBG.Position = UDim2.new(0,16,0,100)
-BoxBG.BackgroundColor3 = Color3.fromRGB(20,21,25); BoxBG.BorderSizePixel = 0; BoxBG.ZIndex = 3
-Instance.new("UICorner", BoxBG).CornerRadius = UDim.new(0,7)
-local _bxs = Instance.new("UIStroke", BoxBG); _bxs.Color = Color3.fromRGB(36,38,43); _bxs.Thickness = 1
-
-local Box = Instance.new("TextBox", BoxBG)
-Box.PlaceholderText = "OSNX-XXXX-XXXX-XXXX"
-Box.Text = _savedKey or ""
-Box.TextColor3 = Color3.fromRGB(229,229,229); Box.PlaceholderColor3 = Color3.fromRGB(65,65,78)
-Box.Font = Enum.Font.Gotham; Box.TextSize = 12
-Box.Size = UDim2.new(1,-12,1,0); Box.Position = UDim2.new(0,10,0,0)
-Box.BackgroundTransparency = 1; Box.BorderSizePixel = 0; Box.ClearTextOnFocus = false; Box.ZIndex = 4
-
-local BtnBG = Instance.new("Frame", Card)
-BtnBG.Size = UDim2.new(0,110,0,38); BtnBG.Position = UDim2.new(1,-126,0,100)
-BtnBG.BackgroundColor3 = Color3.fromRGB(55,57,65); BtnBG.BorderSizePixel = 0; BtnBG.ZIndex = 3
-Instance.new("UICorner", BtnBG).CornerRadius = UDim.new(0,7)
-
-local Btn = Instance.new("TextButton", BtnBG)
-Btn.Text = "CONTINUE"; Btn.TextColor3 = Color3.fromRGB(229,229,229)
-Btn.Font = Enum.Font.GothamBold; Btn.TextSize = 12
-Btn.Size = UDim2.new(1,0,1,0); Btn.BackgroundTransparency = 1; Btn.BorderSizePixel = 0; Btn.ZIndex = 4
-
-local St = Instance.new("TextLabel", Card)
-St.Text = ""; St.TextColor3 = Color3.fromRGB(248,113,113)
-St.Font = Enum.Font.Gotham; St.TextSize = 11
-St.Size = UDim2.new(1,-32,0,14); St.Position = UDim2.new(0,16,0,144)
-St.BackgroundTransparency = 1; St.TextXAlignment = Enum.TextXAlignment.Left; St.ZIndex = 3
-
--- ── Auto-Save toggle ──
-local SaveToggleRow = Instance.new("Frame", Card)
-SaveToggleRow.Size = UDim2.new(1,-32,0,22); SaveToggleRow.Position = UDim2.new(0,16,0,162)
-SaveToggleRow.BackgroundTransparency = 1; SaveToggleRow.ZIndex = 3
-
-local SaveLabel = Instance.new("TextLabel", SaveToggleRow)
-SaveLabel.Size = UDim2.new(1,-50,1,0); SaveLabel.BackgroundTransparency = 1
-SaveLabel.Text = "Auto-save key (skip typing next time)"
-SaveLabel.TextColor3 = Color3.fromRGB(142,146,153)
-SaveLabel.Font = Enum.Font.Gotham; SaveLabel.TextSize = 10
-SaveLabel.TextXAlignment = Enum.TextXAlignment.Left; SaveLabel.ZIndex = 4
-
-local SaveTrack = Instance.new("TextButton", SaveToggleRow)
-SaveTrack.Size = UDim2.new(0,32,0,18); SaveTrack.Position = UDim2.new(1,-36,0.5,-9)
-SaveTrack.BackgroundColor3 = Color3.fromRGB(36,38,43); SaveTrack.Text = ""
-SaveTrack.AutoButtonColor = false; SaveTrack.ZIndex = 4
-Instance.new("UICorner", SaveTrack).CornerRadius = UDim.new(1,0)
-local SaveKnob = Instance.new("Frame", SaveTrack)
-SaveKnob.Size = UDim2.new(0,14,0,14); SaveKnob.Position = UDim2.new(0,2,0.5,-7)
-SaveKnob.BackgroundColor3 = Color3.fromRGB(85,89,96); SaveKnob.ZIndex = 5
-Instance.new("UICorner", SaveKnob).CornerRadius = UDim.new(1,0)
-
-local autoSave = true
-local function updateSaveToggle()
-    local TW = game:GetService("TweenService")
-    TW:Create(SaveKnob, TweenInfo.new(0.15), {
-        Position = autoSave and UDim2.new(1,-16,0.5,-7) or UDim2.new(0,2,0.5,-7),
-        BackgroundColor3 = autoSave and Color3.fromRGB(229,229,229) or Color3.fromRGB(85,89,96)
-    }):Play()
-    TW:Create(SaveTrack, TweenInfo.new(0.15), {
-        BackgroundColor3 = autoSave and Color3.fromRGB(120,125,133) or Color3.fromRGB(36,38,43)
-    }):Play()
-end
-updateSaveToggle()
-SaveTrack.MouseButton1Click:Connect(function() autoSave = not autoSave; updateSaveToggle() end)
-
--- ── Auto-Login toggle ──
-local AutoLoginRow = Instance.new("Frame", Card)
-AutoLoginRow.Size = UDim2.new(1,-32,0,22); AutoLoginRow.Position = UDim2.new(0,16,0,186)
-AutoLoginRow.BackgroundTransparency = 1; AutoLoginRow.ZIndex = 3
-
-local ALLabel = Instance.new("TextLabel", AutoLoginRow)
-ALLabel.Size = UDim2.new(1,-50,1,0); ALLabel.BackgroundTransparency = 1
-ALLabel.Text = "Auto-login (confirm saved key automatically)"
-ALLabel.TextColor3 = Color3.fromRGB(142,146,153)
-ALLabel.Font = Enum.Font.Gotham; ALLabel.TextSize = 10
-ALLabel.TextXAlignment = Enum.TextXAlignment.Left; ALLabel.ZIndex = 4
-
-local ALTrack = Instance.new("TextButton", AutoLoginRow)
-ALTrack.Size = UDim2.new(0,32,0,18); ALTrack.Position = UDim2.new(1,-36,0.5,-9)
-ALTrack.BackgroundColor3 = Color3.fromRGB(36,38,43); ALTrack.Text = ""
-ALTrack.AutoButtonColor = false; ALTrack.ZIndex = 4
-Instance.new("UICorner", ALTrack).CornerRadius = UDim.new(1,0)
-local ALKnob = Instance.new("Frame", ALTrack)
-ALKnob.Size = UDim2.new(0,14,0,14); ALKnob.Position = UDim2.new(0,2,0.5,-7)
-ALKnob.BackgroundColor3 = Color3.fromRGB(85,89,96); ALKnob.ZIndex = 5
-Instance.new("UICorner", ALKnob).CornerRadius = UDim.new(1,0)
-
--- Load auto-login preference
-local AL_FILE = "osnx_autologin.txt"
-local autoLogin = false
-pcall(function()
-    local v = readfile(AL_FILE)
-    autoLogin = (v == "1")
-end)
-
-local function updateALToggle()
-    local TW = game:GetService("TweenService")
-    TW:Create(ALKnob, TweenInfo.new(0.15), {
-        Position = autoLogin and UDim2.new(1,-16,0.5,-7) or UDim2.new(0,2,0.5,-7),
-        BackgroundColor3 = autoLogin and Color3.fromRGB(229,229,229) or Color3.fromRGB(85,89,96)
-    }):Play()
-    TW:Create(ALTrack, TweenInfo.new(0.15), {
-        BackgroundColor3 = autoLogin and Color3.fromRGB(120,125,133) or Color3.fromRGB(36,38,43)
-    }):Play()
-end
-updateALToggle()
-ALTrack.MouseButton1Click:Connect(function()
-    autoLogin = not autoLogin
-    updateALToggle()
-    pcall(function() writefile(AL_FILE, autoLogin and "1" or "0") end)
-end)
-
-local FreeBtn = Instance.new("TextButton", Card)
-FreeBtn.Text = "GET FREE KEY"; FreeBtn.TextColor3 = Color3.fromRGB(142,146,153)
-FreeBtn.Font = Enum.Font.GothamBold; FreeBtn.TextSize = 11
-FreeBtn.Size = UDim2.new(0.5,-20,0,30); FreeBtn.Position = UDim2.new(0,16,0,214)
-FreeBtn.BackgroundColor3 = Color3.fromRGB(20,21,25); FreeBtn.BorderSizePixel = 0; FreeBtn.ZIndex = 3
-Instance.new("UICorner", FreeBtn).CornerRadius = UDim.new(0,7)
-local _fs = Instance.new("UIStroke", FreeBtn); _fs.Color = Color3.fromRGB(36,38,43); _fs.Thickness = 1
-
-local DiscBtn = Instance.new("TextButton", Card)
-DiscBtn.Text = "JOIN DISCORD"; DiscBtn.TextColor3 = Color3.fromRGB(142,146,153)
-DiscBtn.Font = Enum.Font.GothamBold; DiscBtn.TextSize = 11
-DiscBtn.Size = UDim2.new(0.5,-20,0,30); DiscBtn.Position = UDim2.new(0.5,4,0,214)
-DiscBtn.BackgroundColor3 = Color3.fromRGB(20,21,25); DiscBtn.BorderSizePixel = 0; DiscBtn.ZIndex = 3
-Instance.new("UICorner", DiscBtn).CornerRadius = UDim.new(0,7)
-local _ds = Instance.new("UIStroke", DiscBtn); _ds.Color = Color3.fromRGB(36,38,43); _ds.Thickness = 1
-
-local PBarBG = Instance.new("Frame", Card)
-PBarBG.Size = UDim2.new(1,-32,0,3); PBarBG.Position = UDim2.new(0,16,0,256)
-PBarBG.BackgroundColor3 = Color3.fromRGB(24,26,30); PBarBG.BorderSizePixel = 0; PBarBG.ZIndex = 3
-Instance.new("UICorner", PBarBG).CornerRadius = UDim.new(1,0)
-local PBar = Instance.new("Frame", PBarBG)
-PBar.Size = UDim2.new(0,0,1,0); PBar.BackgroundColor3 = Color3.fromRGB(85,89,96)
-PBar.BorderSizePixel = 0; PBar.ZIndex = 4
-Instance.new("UICorner", PBar).CornerRadius = UDim.new(1,0)
-
-local Foot = Instance.new("TextLabel", Card)
-Foot.Text = "Made by XIAN · #OSNX"; Foot.TextColor3 = Color3.fromRGB(40,42,50)
-Foot.Font = Enum.Font.Gotham; Foot.TextSize = 10
-Foot.Size = UDim2.new(1,-32,0,12); Foot.Position = UDim2.new(0,16,0,268)
-Foot.BackgroundTransparency = 1; Foot.TextXAlignment = Enum.TextXAlignment.Center; Foot.ZIndex = 3
-
-FreeBtn.MouseButton1Click:Connect(function()
-    pcall(function() game:GetService("GuiService"):OpenBrowserWindow(WEBSITE_URL) end)
-end)
-DiscBtn.MouseButton1Click:Connect(openDiscord)
-
-local busy = false
-local function doVerify()
-    if busy then return end
-    local k = Box.Text:upper():gsub("%s","")
-    if k == "" then St.TextColor3 = Color3.fromRGB(248,113,113); St.Text = "Enter your license key."; return end
-    busy = true; Btn.Text = "Checking..."; BtnBG.BackgroundColor3 = Color3.fromRGB(36,38,43); St.Text = ""
-    pcall(function()
-        local TW = game:GetService("TweenService")
-        TW:Create(PBar, TweenInfo.new(1.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size=UDim2.new(0.7,0,1,0)}):Play()
-    end)
-    local ok, msg, curUses = CHECK(k)
-    if ok then
-        pcall(function()
-            local TW = game:GetService("TweenService")
-            TW:Create(PBar, TweenInfo.new(0.3), {Size=UDim2.new(1,0,1,0), BackgroundColor3=Color3.fromRGB(74,222,128)}):Play()
-        end)
-        St.TextColor3 = Color3.fromRGB(74,222,128)
-        St.Text = autoSave and "Verified! Key saved." or "Verified! Loading #OSNX..."
-        Btn.Text = "Loading..."; BtnBG.BackgroundColor3 = Color3.fromRGB(30,50,35)
-        if autoSave then saveKey(k) else clearSavedKey() end
-        -- Store key and start session (uses=1, begin heartbeat)
-        _verifiedKey = k
-        _verifiedUses = curUses
-        doSessionStart()
-        wait(0.7); pcall(function() Root:Destroy() end); done = true
-    else
-        pcall(function()
-            local TW = game:GetService("TweenService")
-            TW:Create(PBar, TweenInfo.new(0.2), {Size=UDim2.new(0,0,1,0), BackgroundColor3=Color3.fromRGB(85,89,96)}):Play()
-        end)
-        St.TextColor3 = Color3.fromRGB(248,113,113); St.Text = tostring(msg)
-        Btn.Text = "CONTINUE"; BtnBG.BackgroundColor3 = Color3.fromRGB(55,57,65); busy = false
-    end
-end
-
-Btn.MouseButton1Click:Connect(doVerify)
-Box.FocusLost:Connect(function(enter) if enter then doVerify() end end)
-
--- If saved key is valid AND auto-login is on: auto-confirm
-if _verifiedKey and autoLogin then
-    task.spawn(function()
-        task.wait(0.05)
-        -- Animate progress bar then close
-        pcall(function()
-            local TW = game:GetService("TweenService")
-            TW:Create(PBar, TweenInfo.new(0.6, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size=UDim2.new(1,0,1,0), BackgroundColor3=Color3.fromRGB(74,222,128)}):Play()
-        end)
-        St.TextColor3 = Color3.fromRGB(74,222,128)
-        St.Text = "Auto-login · Loading #OSNX..."
-        Btn.Text = "Loading..."
-        BtnBG.BackgroundColor3 = Color3.fromRGB(30,50,35)
-        doSessionStart()
-        task.wait(0.7)
-        pcall(function() Root:Destroy() end)
-        done = true
-    end)
-end
-
-repeat wait(0.1) until done
 
 -- ═══════════════════════════════════════════════════════════
 --   MAIN ENGINE
@@ -985,30 +589,44 @@ RunService.RenderStepped:Connect(function()
     SA_FOVCircle.Position=center; SA_FOVCircle.Radius=SA.FOVSize; SA_FOVCircle.Visible=SA.FOVVisible and SA.Enabled
     SA._cache=(SA.Enabled and not SA_ShouldSkip()) and SA_GetNearest() or nil
 end)
-local namecallHook
-namecallHook=hookmetamethod(game,"__namecall",function(self,...)
-    if SA.Enabled and SA._cache then
-        local method=getnamecallmethod()
-        if method=="Raycast" then
-            local args={...}; local origin,direction,params=args[1],args[2],args[3]
-            if typeof(origin)=="Vector3" and typeof(direction)=="Vector3" then
-                if SA_IsBulletRay(origin,direction,params) then
-                    local toTarget=SA._cache.Position-origin; local newMag=math.max(direction.Magnitude,toTarget.Magnitude+5)
-                    args[2]=toTarget.Unit*newMag; return namecallHook(self,table.unpack(args))
+
+-- hookmetamethod: attempt silently; if unavailable (Delta/etc.) SA raycast redirect is skipped
+-- The SA._cache and FOV circle still work — only the raycast redirect is gated
+local _saHookActive = false
+pcall(function()
+    local namecallHook
+    namecallHook = hookmetamethod(game, "__namecall", function(self, ...)
+        if SA.Enabled and SA._cache then
+            local method = getnamecallmethod()
+            if method == "Raycast" then
+                local args = {...}; local origin, direction, params = args[1], args[2], args[3]
+                if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
+                    if SA_IsBulletRay(origin, direction, params) then
+                        local toTarget = SA._cache.Position - origin
+                        local newMag = math.max(direction.Magnitude, toTarget.Magnitude + 5)
+                        args[2] = toTarget.Unit * newMag
+                        return namecallHook(self, table.unpack(args))
+                    end
                 end
-            end
-        elseif method=="FindPartOnRayWithIgnoreList" or method=="FindPartOnRay" then
-            local args={...}; local originalRay=args[1]
-            if typeof(originalRay)=="Ray" then
-                if SA_IsBulletRay(originalRay.Origin,originalRay.Direction,nil) then
-                    local toTarget=SA._cache.Position-originalRay.Origin; local newMag=math.max(originalRay.Direction.Magnitude,toTarget.Magnitude+5)
-                    args[1]=Ray.new(originalRay.Origin,toTarget.Unit*newMag); return namecallHook(self,table.unpack(args))
+            elseif method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRay" then
+                local args = {...}; local originalRay = args[1]
+                if typeof(originalRay) == "Ray" then
+                    if SA_IsBulletRay(originalRay.Origin, originalRay.Direction, nil) then
+                        local toTarget = SA._cache.Position - originalRay.Origin
+                        local newMag = math.max(originalRay.Direction.Magnitude, toTarget.Magnitude + 5)
+                        args[1] = Ray.new(originalRay.Origin, toTarget.Unit * newMag)
+                        return namecallHook(self, table.unpack(args))
+                    end
                 end
             end
         end
-    end
-    return namecallHook(self,...)
+        return namecallHook(self, ...)
+    end)
+    _saHookActive = true
 end)
+if not _saHookActive then
+    warn("[#OSNX] hookmetamethod unavailable — Silent Aim raycast redirect disabled on this executor")
+end
 
 -- ═══════════ COMBAT HELPERS ═══════════
 local function isTeammate(player)
@@ -1225,7 +843,14 @@ table.insert(Connections,RunService.RenderStepped:Connect(function(dt)
     if shouldLock and tp and tp.Character then local part=tp.Character:FindFirstChild(_G.LockTargetPart); if part then local tpos=getPredictedPos(tp,part.Position); local cur=Camera.CFrame; Camera.CFrame=applySmoothing(cur,CFrame.new(cur.Position,tpos),_G.AimSmoothness) end end
     if _G.FOVChanger then Camera.FieldOfView=_G.FOVChangerValue end
     if _G.AntiAimEnabled then local char=LP.Character; if char and char:FindFirstChild("HumanoidRootPart") then char.HumanoidRootPart.CFrame=char.HumanoidRootPart.CFrame*CFrame.Angles(0,math.rad(15),0) end end
-    if _G.TriggerbotEnabled and Mouse.Target then local pc=Mouse.Target.Parent; if pc:FindFirstChild("Humanoid") or (pc.Parent and pc.Parent:FindFirstChild("Humanoid")) then local pl=Players:GetPlayerFromCharacter(pc) or Players:GetPlayerFromCharacter(pc.Parent); if pl and pl~=LP and not isTeammate(pl) then mouse1click() end end end
+    -- Triggerbot: pcall mouse1click for Delta compatibility
+    if _G.TriggerbotEnabled and Mouse.Target then
+        local pc=Mouse.Target.Parent
+        if pc:FindFirstChild("Humanoid") or (pc.Parent and pc.Parent:FindFirstChild("Humanoid")) then
+            local pl=Players:GetPlayerFromCharacter(pc) or Players:GetPlayerFromCharacter(pc.Parent)
+            if pl and pl~=LP and not isTeammate(pl) then pcall(mouse1click) end
+        end
+    end
     espTick=espTick+dt; local doESP=not _G.PerformanceMode or espTick>=espInterval
     if doESP then if _G.PerformanceMode then espTick=0; espInterval=0.05 else espInterval=0 end end
     local tracerCenter=_G.TracerOrigin=="Bottom" and Vector2.new(cx,Camera.ViewportSize.Y) or _G.TracerOrigin=="Center" and Vector2.new(cx,cy) or mp
@@ -1322,12 +947,10 @@ local ScaleUI=Instance.new("UIScale",MainFrame); ScaleUI.Scale=1.0
 local TopBar=Instance.new("Frame",MainFrame); TopBar.Size=UDim2.new(1,0,0,40); TopBar.BackgroundColor3=P.sidebar; TopBar.BorderSizePixel=0; TopBar.ZIndex=5
 local TBLine=Instance.new("Frame",TopBar); TBLine.Position=UDim2.new(0,0,1,-1); TBLine.Size=UDim2.new(1,0,0,1); TBLine.BackgroundColor3=P.border; TBLine.BorderSizePixel=0; TBLine.ZIndex=6
 
--- Box logo in topbar (no UICorner)
 local TopLogoImg=Instance.new("ImageLabel",TopBar)
 TopLogoImg.Size=UDim2.new(0,24,0,24); TopLogoImg.Position=UDim2.new(0,12,0.5,-12)
 TopLogoImg.BackgroundColor3=P.panel; TopLogoImg.BorderSizePixel=0
 TopLogoImg.Image=IMAGE_ID; TopLogoImg.ZIndex=6
--- no UICorner = box shape
 
 local TitleLabel=Instance.new("TextLabel",TopBar); TitleLabel.Position=UDim2.new(0,42,0,0); TitleLabel.Size=UDim2.new(0,220,1,0); TitleLabel.BackgroundTransparency=1; TitleLabel.Text="#OSNX MAIN CHEAT"; TitleLabel.TextColor3=P.text; TitleLabel.Font=Enum.Font.GothamBold; TitleLabel.TextSize=12; TitleLabel.TextXAlignment=Enum.TextXAlignment.Left; TitleLabel.ZIndex=6
 
@@ -1490,7 +1113,7 @@ end
 do
     local bannerRow=Instance.new("Frame",Pages.Home); bannerRow.Size=UDim2.new(1,0,0,54); bannerRow.BackgroundColor3=P.panel; bannerRow.BorderSizePixel=0; bannerRow.LayoutOrder=0; bannerRow.ZIndex=4; Instance.new("UICorner",bannerRow).CornerRadius=UDim.new(0,10); local bs=Instance.new("UIStroke",bannerRow); bs.Color=P.border; bs.Thickness=1
     local ab=Instance.new("Frame",bannerRow); ab.Size=UDim2.new(0,3,1,-12); ab.Position=UDim2.new(0,10,0,6); ab.BackgroundColor3=P.text; ab.BorderSizePixel=0; ab.ZIndex=5; Instance.new("UICorner",ab).CornerRadius=UDim.new(1,0)
-    local bt=Instance.new("TextLabel",bannerRow); bt.Size=UDim2.new(1,-20,0,20); bt.Position=UDim2.new(0,20,0,8); bt.BackgroundTransparency=1; bt.Text="#OSNX MAIN CHEAT v3"; bt.TextColor3=P.text; bt.Font=Enum.Font.GothamBold; bt.TextSize=13; bt.TextXAlignment=Enum.TextXAlignment.Left; bt.ZIndex=5
+    local bt=Instance.new("TextLabel",bannerRow); bt.Size=UDim2.new(1,-20,0,20); bt.Position=UDim2.new(0,20,0,8); bt.BackgroundTransparency=1; bt.Text="#OSNX MAIN CHEAT v3 — NO KEY BUILD"; bt.TextColor3=P.text; bt.Font=Enum.Font.GothamBold; bt.TextSize=13; bt.TextXAlignment=Enum.TextXAlignment.Left; bt.ZIndex=5
     local bsub=Instance.new("TextLabel",bannerRow); bsub.Size=UDim2.new(1,-20,0,14); bsub.Position=UDim2.new(0,20,0,28); bsub.BackgroundTransparency=1; bsub.Text="Made by XIAN a.k.a XSHOMAPAGMAHAL  •  #OSNX ON TOP BABY"; bsub.TextColor3=P.subtext; bsub.Font=Enum.Font.Gotham; bsub.TextSize=9; bsub.TextXAlignment=Enum.TextXAlignment.Left; bsub.ZIndex=5
 
     local homeL,homeR=makeTwoCol(Pages.Home,1)
@@ -1532,13 +1155,13 @@ do
     local function fmtAge(days) if days>=365 then return math.floor(days/365).."yr" elseif days>=30 then return math.floor(days/30).."mo" else return days.."d" end end
     local pingProfVal = makeProfileStat("≡","Ping","—",1)
     local fpsProfVal  = makeProfileStat("♦","FPS","—",2)
-    local ageProfVal  = makeProfileStat("◎","Account Age",fmtAge(LP.AccountAge),3)
-    local uidProfVal  = makeProfileStat("◈","User ID",tostring(LP.UserId),4)
+    makeProfileStat("◎","Account Age",fmtAge(LP.AccountAge),3)
+    makeProfileStat("◈","User ID",tostring(LP.UserId),4)
     local _pfpsC,_pfpsT=0,0
     task.spawn(function() while task.wait(0.5) do if not ScreenGui.Parent then break end; pcall(function() pingProfVal.Text=math.floor(LP:GetNetworkPing()*1000).."ms" end) end end)
     RunService.RenderStepped:Connect(function(dt) _pfpsC=_pfpsC+1; _pfpsT=_pfpsT+dt; if _pfpsT>=0.5 then fpsProfVal.Text=tostring(math.floor(_pfpsC/_pfpsT)); _pfpsC=0; _pfpsT=0 end end)
 
-    local sessionStart=tick()
+    local sessionStartTick=tick()
     local pingStatVal,fpsStatVal,uptimeVal,serverVal
     local ssCard=makePanel(homeL,"Session Stats",2)
     local function makeStat(p,ico,lbl3,val3,ord3)
@@ -1550,7 +1173,7 @@ do
     serverVal=makeStat(ssCard,"◈","Server Players",tostring(#Players:GetPlayers()),2)
     fpsStatVal=makeStat(ssCard,"♦","FPS","—",3)
     pingStatVal=makeStat(ssCard,"≡","Ping","—",4)
-    task.spawn(function() while task.wait(0.5) do if not ScreenGui.Parent then break end; pcall(function() local e=tick()-sessionStart; local m=math.floor(e/60); local s=math.floor(e%60); uptimeVal.Text=string.format("%d:%02d",m,s); serverVal.Text=tostring(#Players:GetPlayers()); pingStatVal.Text=math.floor(LP:GetNetworkPing()*1000).."ms" end) end end)
+    task.spawn(function() while task.wait(0.5) do if not ScreenGui.Parent then break end; pcall(function() local e=tick()-sessionStartTick; local m=math.floor(e/60); local s=math.floor(e%60); uptimeVal.Text=string.format("%d:%02d",m,s); serverVal.Text=tostring(#Players:GetPlayers()); pingStatVal.Text=math.floor(LP:GetNetworkPing()*1000).."ms" end) end end)
 
     local stCard=makePanel(homeR,"Feature Status",1)
     local function makeStatusRow(lbl4,getState,order4)
@@ -1614,7 +1237,6 @@ do
     makeToggle(rfPanel,"Auto Fire on Hold",RF.AutoFireHold,8,function(v) RF.AutoFireHold=v end)
     makeToggle(rfPanel,"Ignore Team",RF.IgnoreTeam,9,function(v) RF.IgnoreTeam=v end)
     local setPanel=makePanel(c2,"Aim Settings",1)
-    -- TARGET PRIORITY: updated options
     makeDropdown(setPanel,"Target Priority",{"Head","HumanoidRootPart","Torso","Left Arm","Right Arm"},_G.TargetPriority,1,function(v) _G.TargetPriority=v end)
     makeDropdown(setPanel,"Activation Mode",{"Hold","Toggle","AlwaysOn"},_G.AimActivation,2,function(v) _G.AimActivation=v end)
     makeDropdown(setPanel,"Smoothing Curve",{"Linear","Smooth","Exponential"},_G.AimCurve,3,function(v) _G.AimCurve=v end)
@@ -1658,7 +1280,6 @@ do
     makeSlider(saMain,"Max Distance",50,1000,SA.MaxDistance,false,7,function(v) SA.MaxDistance=v end)
     local saTarget=makePanel(sa2,"Targeting",1)
     makeDropdown(saTarget,"Body Part",{"Head","HumanoidRootPart","Torso","Left Arm","Right Arm"},SA.BodyPart,1,function(v) SA.BodyPart=v end)
-    -- Values panel REMOVED per request
 end
 
 -- ═══════════════════════════════════════════════════════════
@@ -1760,7 +1381,6 @@ do
     makeButton(discordPanel,"Get Free Key",2,function() pcall(function() game:GetService("GuiService"):OpenBrowserWindow(WEBSITE_URL) end) end)
     local panicPanel=makePanel(mc2,"Panic",3)
     makeButton(panicPanel,"PANIC — Destroy All",1,function()
-        doSessionEnd()
         stopUsernameHide(); stopGodMode(); stopNoclip(); stopFly(); disableFullbright(); resetAll()
         for _,c in ipairs(Connections) do c:Disconnect() end
         FOVCircle:Remove(); FOVSquare:Remove(); SA_FOVCircle:Remove(); CrosshairH:Remove(); CrosshairV:Remove(); PingText:Remove(); FPSText:Remove(); TargetIndicator:Remove()
@@ -1768,9 +1388,6 @@ do
         for _,a in pairs(OffscreenArrowsT) do if a then a:Remove() end end
         for _,e in pairs(ESPObjects) do for _,o in pairs(e) do if typeof(o)=="table" then for _,oo in pairs(o) do if oo and oo.Remove then oo:Remove() end end elseif o and o.Remove then o:Remove() end end end
         ScreenGui:Destroy()
-    end)
-    makeButton(panicPanel,"Clear Saved Key",2,function()
-        clearSavedKey(); notify("Key","Saved key cleared — will prompt on next load","warn")
     end)
 end
 
@@ -1917,7 +1534,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
             task.delay(0.16,function() MainFrame.Visible=false end)
         end
     elseif input.KeyCode==_PanicKey then
-        doSessionEnd()
         stopUsernameHide(); stopGodMode(); stopNoclip(); stopFly(); disableFullbright(); resetAll()
         for _,c in ipairs(Connections) do c:Disconnect() end
         FOVCircle:Remove(); FOVSquare:Remove(); SA_FOVCircle:Remove(); CrosshairH:Remove(); CrosshairV:Remove(); PingText:Remove(); FPSText:Remove(); TargetIndicator:Remove()
@@ -1956,14 +1572,7 @@ CircleBtn.InputEnded:Connect(function(inp)
     end
 end)
 
--- End session when player leaves the game (LocalScript-safe leave detector)
-LP.AncestryChanged:Connect(function()
-    if not LP.Parent then
-        doSessionEnd()
-    end
-end)
-
-notify("#OSNX","Loaded v3 — #OSNX ON TOP BABY","on")
+notify("#OSNX","Loaded — No Key Build — #OSNX ON TOP BABY","on")
 end)
 
 if not _ok then showError(_err) end
